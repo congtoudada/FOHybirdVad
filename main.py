@@ -125,7 +125,7 @@ def do_training(args, data_loader_test, data_loader_train, device, log_writer, m
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='shanghai')
+    parser.add_argument('--dataset', type=str, default='avenue')
     args = parser.parse_args()
     if args.dataset == 'avenue':
         args = get_configs_avenue()

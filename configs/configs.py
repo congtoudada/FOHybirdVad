@@ -23,15 +23,15 @@ def get_configs_avenue():
 
     # Dataset parameters
     config.dataset = "avenue"
-    config.avenue_path = "H:/AI/dataset/VAD/Featurize/avenue"
-    config.avenue_gt_path = "H:/AI/dataset/VAD/Featurize/avenue/avenue_gt"
+    config.avenue_path = "H:/AI/dataset/VAD/Featurize_png/avenue"
+    config.avenue_gt_path = "H:/AI/dataset/VAD/Featurize_png/avenue/avenue_gt"
     config.percent_abnormal = 0.25
     config.input_3d = True
     config.device = "cuda"
 
     config.start_epoch = 0
     config.print_freq = 10
-    config.num_workers = 10
+    config.num_workers = 0
     config.pin_mem = False
 
     return config
