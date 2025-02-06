@@ -9,8 +9,8 @@ from util.abnormal_utils import filt
 
 
 def inference(model: torch.nn.Module, data_loader: Iterable,
-                   device: torch.device,
-                   log_writer=None, args=None):
+              device: torch.device,
+              log_writer=None, args=None):
     model.eval()
     metric_logger = misc.MetricLogger(delimiter="  ")
     header = 'Testing '
@@ -23,14 +23,15 @@ def inference(model: torch.nn.Module, data_loader: Iterable,
     labels = []
     videos = []
     frames = []
-    for data_iter_step, (samples, grads, targets, label, vid, frame_name) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
+    for data_iter_step, (samples, grads, targets, label, vid, frame_name) in enumerate(
+            metric_logger.log_every(data_loader, args.print_freq, header)):
         videos += list(vid)
         labels += list(label.detach().cpu().numpy())
         frames += list(frame_name)
         samples = samples.to(device)
         grads = grads.to(device)
         targets = targets.to(device)
-        model.train_TS = True # student-teacher reconstruction error
+        model.train_TS = True  # student-teacher reconstruction error
         if args.dataset == 'avenue':
             model.abnormal_score_func_TS = "L2"
         else:
@@ -44,14 +45,14 @@ def inference(model: torch.nn.Module, data_loader: Iterable,
     # Compute statistics
     predictions_teacher = np.array(predictions_teacher)
     predictions_student_teacher = np.array(predictions_student_teacher)
-    predictions = predictions_teacher+predictions_student_teacher
+    predictions = predictions_teacher + predictions_student_teacher
     labels = np.array(labels)
     videos = np.array(videos)
 
-    if args.dataset =='avenue':
+    if args.dataset == 'avenue':
         evaluate_model(predictions, labels, videos,
-                                           normalize_scores=False,
-                                           range=38, mu=11)
+                       normalize_scores=False,
+                       range=38, mu=11)
     else:
         evaluate_model(predictions_teacher, labels, videos,
                        normalize_scores=True,
@@ -60,7 +61,6 @@ def inference(model: torch.nn.Module, data_loader: Iterable,
 
 def evaluate_model(predictions, labels, videos,
                    range=302, mu=21, normalize_scores=False):
-
     aucs = []
     filtered_preds = []
     filtered_labels = []

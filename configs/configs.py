@@ -15,7 +15,7 @@ def get_configs_avenue():
     config.input_size = (320, 640)
     config.norm_pix_loss = False
     config.use_only_masked_tokens_ab = False
-    config.run_type = 'train'
+    config.run_type = 'inference'
     config.resume = False
     # Optimizer parameters
     config.weight_decay = 0.05
@@ -23,8 +23,8 @@ def get_configs_avenue():
 
     # Dataset parameters
     config.dataset = "avenue"
-    config.avenue_path = "/media/alin/ssd2/datasets/Avenue_Dataset/Avenue Dataset"
-    config.avenue_gt_path = "/media/alin/hdd/Transformer_Labels/Avenue_gt"
+    config.avenue_path = "H:/AI/dataset/VAD/Featurize/avenue"
+    config.avenue_gt_path = "H:/AI/dataset/VAD/Featurize/avenue/avenue_gt"
     config.percent_abnormal = 0.25
     config.input_3d = True
     config.device = "cuda"
@@ -51,8 +51,8 @@ def get_configs_shanghai():
     config.input_size = (160, 320)
     config.norm_pix_loss = False
     config.use_only_masked_tokens_ab = False
-    config.run_type = "train"
-    config.resume=False
+    config.run_type = "inference"
+    config.resume = False
 
     # Optimizer parameters
     config.weight_decay = 0.05
@@ -60,8 +60,8 @@ def get_configs_shanghai():
 
     # Dataset parameters
     config.dataset = "shanghai"
-    config.shanghai_path = "/media/alin/hdd/SanhaiTech"
-    config.shanghai_gt_path = "/media/alin/hdd/Transformer_Labels/Shanghai_gt"
+    config.shanghai_path = "H:/AI/dataset/VAD/Featurize/shanghaitech"
+    config.shanghai_gt_path = "H:/AI/dataset/VAD/Featurize/shanghaitech/shanghai_gt"
     config.percent_abnormal = 0.25
     config.input_3d = True
     config.device = "cuda"
