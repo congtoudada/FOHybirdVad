@@ -6,4 +6,3 @@ scikit-learn
 einops
 tensorboard
 matplotlib
-torchsummary
