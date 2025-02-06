@@ -3,7 +3,7 @@ import ml_collections
 
 def get_configs_avenue():
     config = ml_collections.ConfigDict()
-    config.batch_size = 100
+    config.batch_size = 96
     config.epochs = 200
     config.mask_ratio = 0.5
     config.start_TS_epoch = 100
@@ -31,7 +31,7 @@ def get_configs_avenue():
 
     config.start_epoch = 0
     config.print_freq = 10
-    config.num_workers = 0
+    config.num_workers = 8
     config.pin_mem = False
 
     return config
