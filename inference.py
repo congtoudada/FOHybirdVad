@@ -54,7 +54,7 @@ def inference(model: torch.nn.Module, data_loader: Iterable,
                        normalize_scores=False,
                        range=38, mu=11)
     else:
-        evaluate_model(predictions_teacher, labels, videos,
+        evaluate_model(predictions, labels, videos,
                        normalize_scores=True,
                        range=900, mu=282)
 

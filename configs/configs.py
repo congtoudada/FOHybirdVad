@@ -39,13 +39,13 @@ def get_configs_avenue():
 
 def get_configs_shanghai():
     config = ml_collections.ConfigDict()
-    config.batch_size = 100
+    config.batch_size = 64
     config.epochs = 200
     config.mask_ratio = 0.5
     config.start_TS_epoch = 100
     config.masking_method = "random_masking"
     config.output_dir = "experiments/shanghai" # the checkpoints will be loaded from here
-    config.abnormal_score_func = 'L1'
+    config.abnormal_score_func = ['L1', 'L1']
     config.grad_weighted_rec_loss = True
     config.model = "mae_cvt"
     config.input_size = (160, 320)
@@ -60,8 +60,8 @@ def get_configs_shanghai():
 
     # Dataset parameters
     config.dataset = "shanghai"
-    config.shanghai_path = "H:/AI/dataset/VAD/Featurize/shanghaitech"
-    config.shanghai_gt_path = "H:/AI/dataset/VAD/Featurize/shanghaitech/shanghai_gt"
+    config.shanghai_path = "H:/AI/dataset/VAD/Featurize_png/ShanghaiTech"
+    config.shanghai_gt_path = "H:/AI/dataset/VAD/Featurize_png/ShanghaiTech/Shanghai_gt"
     config.percent_abnormal = 0.25
     config.input_3d = True
     config.device = "cuda"
