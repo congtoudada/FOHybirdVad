@@ -12,7 +12,7 @@ from util.morphology import Erosion2d, Dilation2d
 
 class MaskedAutoencoderCvT(nn.Module):
     def __init__(self, img_size=(512, 512), patch_size=16, in_chans=9, out_chans=4,
-                 embed_dim=1024, depth=24, num_heads=16,
+                 embed_dim=1024, depth=24, num_heads=16, mask_ratio=0.5,
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
                  mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False,
                  use_only_masked_tokens_ab=False, abnormal_score_func='L1', masking_method="random_masking",
@@ -48,9 +48,17 @@ class MaskedAutoencoderCvT(nn.Module):
         self.cls_token = nn.Parameter(
             torch.zeros(1, 1, embed_dim)
         )
+        self.height = img_size[0] // patch_size
+        self.width = img_size[1] // patch_size
+        self.mask_height = self.height
+        self.mask_width = int(self.width * mask_ratio)
 
         self.blocks = nn.ModuleList([
-            Block(embed_dim, embed_dim, num_heads, mlp_ratio, qkv_bias=True, qk_scale=None, norm_layer=norm_layer)
+            Block(embed_dim, embed_dim, num_heads, mlp_ratio, qkv_bias=True, qk_scale=None, norm_layer=norm_layer,
+                  height=self.mask_height, width=self.mask_width)
+            if i != depth-1 else
+            Block(embed_dim, embed_dim, num_heads, mlp_ratio, qkv_bias=True, qk_scale=None, norm_layer=norm_layer,
+                  height=self.mask_height, width=self.mask_width, last=True)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
         self.cls_anomalies = nn.Linear(embed_dim, 1)
