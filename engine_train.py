@@ -84,7 +84,7 @@ def test_one_epoch(model: torch.nn.Module, data_loader: Iterable,
         _, _, _, recon_error = model(samples, grad_mask=grads,targets=targets, mask_ratio=args.mask_ratio)
         if isinstance(recon_error, list) or isinstance(recon_error, tuple):
             if len(recon_error) == 2:
-                recon_error = recon_error[0] + recon_error[1]
+                recon_error = 2.2 * recon_error[0] + recon_error[1]
             else:
                 recon_error = 2.2 * recon_error[0] + 1.1 * recon_error[1] + recon_error[2]
         recon_error = recon_error.detach().cpu().numpy()
