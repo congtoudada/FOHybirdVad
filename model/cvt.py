@@ -110,26 +110,25 @@ class Block(nn.Module):
                  height=20,
                  width=40,
                  norm_layer=nn.LayerNorm,
-                 last=False,
+                 official=True,
                  **kwargs):
         super().__init__()
-        self.last = last
         self.norm1 = norm_layer(dim_in)
-        if self.last:
+        if official:
             self.attn = Attention(
                 dim_in, dim_out, num_heads, qkv_bias, attn_drop, drop,
                 **kwargs
             )
         else:
             # official num_heads=4
-            # self.attn = AgentAttention(
-            #     dim=dim_in, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop,
-            #     agent_num=49, height=height, width=width, **kwargs
-            # )
-            self.attn = HiLo(
-                dim=dim_in, num_heads=num_heads*2, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop,
-                window_size=2, alpha=0.5
+            self.attn = AgentAttention(
+                dim=dim_in, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop,
+                agent_num=49, height=height, width=width, **kwargs
             )
+            # self.attn = HiLo(
+            #     dim=dim_in, num_heads=num_heads * 2, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop,
+            #     window_size=2, alpha=0.5
+            # )
 
         self.drop_path = DropPath(drop_path) \
             if drop_path > 0. else nn.Identity()
@@ -792,22 +791,22 @@ class AgentAttention(nn.Module):
         self.scale = head_dim ** -0.5
         self.with_cls_token = with_cls_token
 
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        # self.conv_proj_q = self._build_projection(
-        #     dim, dim, kernel_size, padding_q,
-        #     stride_q, 'linear' if method == 'avg' else method
-        # )
-        # self.conv_proj_k = self._build_projection(
-        #     dim, dim, kernel_size, padding_kv,
-        #     stride_kv, method
-        # )
-        # self.conv_proj_v = self._build_projection(
-        #     dim, dim, kernel_size, padding_kv,
-        #     stride_kv, method
-        # )
-        # self.proj_q = nn.Linear(dim, dim, bias=qkv_bias)
-        # self.proj_k = nn.Linear(dim, dim, bias=qkv_bias)
-        # self.proj_v = nn.Linear(dim, dim, bias=qkv_bias)
+        # self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.conv_proj_q = self._build_projection(
+            dim, dim, kernel_size, padding_q,
+            stride_q, 'linear' if method == 'avg' else method
+        )
+        self.conv_proj_k = self._build_projection(
+            dim, dim, kernel_size, padding_kv,
+            stride_kv, method
+        )
+        self.conv_proj_v = self._build_projection(
+            dim, dim, kernel_size, padding_kv,
+            stride_kv, method
+        )
+        self.proj_q = nn.Linear(dim, dim, bias=qkv_bias)
+        self.proj_k = nn.Linear(dim, dim, bias=qkv_bias)
+        self.proj_v = nn.Linear(dim, dim, bias=qkv_bias)
 
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
@@ -921,15 +920,15 @@ class AgentAttention(nn.Module):
         num_heads = self.num_heads  # 注意力头的个数
         head_dim = c // num_heads  # 每个头的通道数
 
-        # q, k, v = self.forward_conv(x, self.height, self.width)
-        # q = rearrange(self.proj_q(q), 'b t (h d) -> b h t d', h=self.num_heads)
-        # k = rearrange(self.proj_k(k), 'b t (h d) -> b h t d', h=self.num_heads)
-        # v = rearrange(self.proj_v(v), 'b t (h d) -> b h t d', h=self.num_heads)
+        # # kv表将输入x通过线性层生成q示: (b,n,c) --qkv-> (b,n,3c) --reshape-> (b,n,3,c) --permute-> (3,b,n,c)
+        # qkv = self.qkv(x).reshape(b, n, 3, c).permute(2, 0, 1, 3)
+        # # 将qkv拆分: q:(b,n,c)  k:(b,n,c)  v:(b,n,c)
+        # q, k, v = qkv[0], qkv[1], qkv[2]
 
-        # kv表将输入x通过线性层生成q示: (b,n,c) --qkv-> (b,n,3c) --reshape-> (b,n,3,c) --permute-> (3,b,n,c)
-        qkv = self.qkv(x).reshape(b, n, 3, c).permute(2, 0, 1, 3)
-        # 将qkv拆分: q:(b,n,c)  k:(b,n,c)  v:(b,n,c)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = self.forward_conv(x, self.height, self.width)
+        q = rearrange(self.proj_q(q), 'b t (h d) -> b h t d', h=self.num_heads)
+        k = rearrange(self.proj_k(k), 'b t (h d) -> b h t d', h=self.num_heads)
+        v = rearrange(self.proj_v(v), 'b t (h d) -> b h t d', h=self.num_heads)
 
         q_t = q.reshape(b, self.height, self.width, c).permute(0, 3, 1, 2)
         agent_tokens = self.pool(q_t).reshape(b, c, -1).permute(0, 2, 1)
@@ -980,18 +979,18 @@ if __name__ == '__main__':
     H = 20
     W = 40
 
-    print("**********************1.823119878768921 秒****************************")
-    Baseline = Attention(dim_in=D, dim_out=D, num_heads=num_heads, with_cls_token=False)
-    Baseline.to(device)
-    out = Baseline(X, H, W)
-    X = torch.randn(1, N, D).to(device)
-    start_time = time.time()
-    for i in range(run_cnt):
-        out = Baseline(X, H, W)
-    end_time = time.time()
-    print(f"Attention执行时间: {end_time - start_time} 秒")
-    print(out.shape)
-    summary(Baseline, (N, D))
+    # print("**************************************************")
+    # Baseline = Attention(dim_in=D, dim_out=D, num_heads=num_heads, with_cls_token=False)
+    # Baseline.to(device)
+    # out = Baseline(X, H, W)
+    # X = torch.randn(1, N, D).to(device)
+    # start_time = time.time()
+    # for i in range(run_cnt):
+    #     out = Baseline(X, H, W)
+    # end_time = time.time()
+    # print(f"Attention执行时间: {end_time - start_time} 秒")
+    # print(out.shape)
+    # summary(Baseline, (N, D))
 
     print("*********************************************")
     Model1 = AgentAttention(dim=D, num_heads=num_heads, qkv_bias=False, attn_drop=0., proj_drop=0.,
@@ -1007,29 +1006,29 @@ if __name__ == '__main__':
     print(out.shape)
     summary(Model1, (N, D))
 
-    print("***********************1.6228840351104736 秒***************************")
-    Model2 = HiLo(dim=D, num_heads=num_heads, window_size=2, alpha=0.5, with_cls_token=False)
-    Model2.to(device)
-    out = Model2(X, H, W)
-    X = torch.randn(1, N, D).to(device)
-    start_time = time.time()
-    for i in range(run_cnt):
-        out = Model2(X)
-    end_time = time.time()
-    print(f"HiLoAttention执行时间: {end_time - start_time} 秒")
-    print(out.shape)
-    summary(Model2, (N, D))
-
-    # print("*******************25.398837089538574 秒**************************")
-    # Model3 = MultiDilateLocalAttention(dim=D, num_heads=num_heads)
-    # Model3.to(device)
-    # X = X.reshape(B, H, W, D)
-    # out = Model3(X)
+    # print("**************************************************")
+    # Model2 = HiLo(dim=D, num_heads=num_heads, window_size=2, alpha=0.5, with_cls_token=False)
+    # Model2.to(device)
+    # out = Model2(X, H, W)
+    # X = torch.randn(1, N, D).to(device)
     # start_time = time.time()
     # for i in range(run_cnt):
-    #     X = torch.randn(1, N, D).reshape(B, H, W, D).to(device)
+    #     out = Model2(X)
+    # end_time = time.time()
+    # print(f"HiLoAttention执行时间: {end_time - start_time} 秒")
+    # print(out.shape)
+    # summary(Model2, (N, D))
+
+    # print("*********************************************")
+    # Model3 = EfficientAdditiveAttention(in_dims=D, token_dim=D, with_cls_token=False)
+    # Model3.to(device)
+    # X = X.reshape(B, N, D)
+    # out = Model3(X)
+    # X = torch.randn(1, N, D).to(device)
+    # start_time = time.time()
+    # for i in range(run_cnt):
     #     out = Model3(X)
     # end_time = time.time()
-    # print(f"MultiDilateLocalAttention执行时间: {end_time - start_time} 秒")
+    # print(f"EfficientAdditiveAttention执行时间: {end_time - start_time} 秒")
     # print(out.shape)
-    # summary(Model3, (H, W, D))
+    # summary(Model3, (N, D))

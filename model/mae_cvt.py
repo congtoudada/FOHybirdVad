@@ -56,9 +56,6 @@ class MaskedAutoencoderCvT(nn.Module):
         self.blocks = nn.ModuleList([
             Block(embed_dim, embed_dim, num_heads, mlp_ratio, qkv_bias=True, qk_scale=None, norm_layer=norm_layer,
                   height=self.mask_height, width=self.mask_width)
-            if i != depth-1 else
-            Block(embed_dim, embed_dim, num_heads, mlp_ratio, qkv_bias=True, qk_scale=None, norm_layer=norm_layer,
-                  height=self.mask_height, width=self.mask_width, last=True)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
         self.cls_anomalies = nn.Linear(embed_dim, 1)
@@ -72,14 +69,14 @@ class MaskedAutoencoderCvT(nn.Module):
 
         self.decoder_blocks = nn.ModuleList([
             Block(decoder_embed_dim, decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, qk_scale=None,
-                  norm_layer=norm_layer)
+                  norm_layer=norm_layer, official=False)
             for i in range(decoder_depth)])
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size ** 2 * out_chans, bias=True)  # decoder to patch
 
         self.decoder_student_block = Block(decoder_embed_dim, decoder_embed_dim, decoder_num_heads, mlp_ratio,
-                                           qkv_bias=True, qk_scale=None, norm_layer=norm_layer)
+                                           qkv_bias=True, qk_scale=None, norm_layer=norm_layer, official=False)
         self.decoder_student_norm = norm_layer(decoder_embed_dim)
         self.decoder_student_pred = nn.Linear(decoder_embed_dim, patch_size ** 2 * out_chans,
                                               bias=True)  # decoder to patch
@@ -92,6 +89,15 @@ class MaskedAutoencoderCvT(nn.Module):
 
         self.erosion_3 = Erosion2d(3, 3, 2, soft_max=False)
         self.dilation_3 = Dilation2d(3, 3, 3, soft_max=False)
+
+    def freeze_encoder(self):
+        self.cls_token.requires_grad = False
+        for param in self.norm.parameters():
+            param.requires_grad = False
+        for param in self.blocks.parameters():
+            param.requires_grad = False
+        for param in self.patch_embed.parameters():
+            param.requires_grad = False
 
     def freeze_backbone(self):
         self.cls_token.requires_grad = False

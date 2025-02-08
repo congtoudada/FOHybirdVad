@@ -86,6 +86,8 @@ def do_training(args, data_loader_test, data_loader_train, device, log_writer, m
     best_micro = 0.0
     best_micro_student = 0.0
     for epoch in range(args.start_epoch, args.epochs):
+        if epoch == args.start_TS_epoch:  # 加载最优权重
+            misc.load_model(args=args, model=model, optimizer=optimizer, loss_scaler=loss_scaler, student=True)
 
         train_stats = train_one_epoch(
             model, data_loader_train,
@@ -107,6 +109,7 @@ def do_training(args, data_loader_test, data_loader_train, device, log_writer, m
             best_micro = test_stats['micro']
             misc.save_model(args=args, model=model, optimizer=optimizer,
                             loss_scaler=loss_scaler, epoch=epoch, best=True)
+
         if args.start_TS_epoch <= epoch:
             if test_stats['micro'] > best_micro_student:
                 best_micro_student = test_stats['micro']
