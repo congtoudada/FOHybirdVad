@@ -1,7 +1,9 @@
+import os
 from collections.abc import Iterable
 
 import numpy as np
 import torch
+from matplotlib import pyplot as plt
 from sklearn import metrics
 
 from util import misc
@@ -71,10 +73,27 @@ def evaluate_model(predictions, labels, videos,
             pred = (pred - np.min(pred)) / (np.max(pred) - np.min(pred))
 
         pred = np.nan_to_num(pred, nan=0.)
-
         filtered_preds.append(pred)
         lbl = labels[np.array(videos) == vid]
         filtered_labels.append(lbl)
+
+        # Plot the anomaly score (pred) and the label (lbl) on the same graph
+        if not normalize_scores:
+            pred_norm = (pred - np.min(pred)) / (np.max(pred) - np.min(pred))
+        else:
+            pred_norm = pred
+        plt.plot(pred_norm, label='Anomaly Score', color='b')
+        plt.plot(lbl, label='Ground Truth', color='r', linestyle='--')
+        plt.xlabel("Frames")
+        plt.ylabel("Anomaly Score")
+        plt.legend()
+        plt.title(f"Anomaly Detection: Video {vid}")
+
+        # Save the plot for this video
+        os.makedirs("experiments/graphs/shanghai", exist_ok=True)
+        plt.savefig(f"experiments/graphs/shanghai/{vid}.png")
+        plt.close()
+
         lbl = np.array([0] + list(lbl) + [1])
         pred = np.array([0] + list(pred) + [1])
         fpr, tpr, _ = metrics.roc_curve(lbl, pred)
