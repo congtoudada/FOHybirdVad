@@ -326,8 +326,8 @@ def save_model(args, epoch, model, optimizer, loss_scaler, latest=False, best=Fa
                 save_on_master(to_save, checkpoint_path)
 
 
-def load_model(args, model, optimizer=None, loss_scaler=None, student=False):
-    if student:
+def load_model(args, model, optimizer=None, loss_scaler=None, train_TS=False):
+    if train_TS:
         teacher = torch.load(args.output_dir + "/checkpoint-best.pth")['model']
         model.load_state_dict(teacher, strict=False)
         return

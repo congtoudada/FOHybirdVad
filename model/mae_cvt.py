@@ -16,14 +16,17 @@ class MaskedAutoencoderCvT(nn.Module):
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
                  mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False,
                  use_only_masked_tokens_ab=False, abnormal_score_func='L1', masking_method="random_masking",
-                 grad_weighted_loss=True, student_depth=1):
+                 grad_weighted_loss=True, pred_cls=True, student_depth=1):
         super().__init__()
         # --------------------------------------------------------------------------
         # Abnormal specifics
         self.use_only_masked_tokens_ab = use_only_masked_tokens_ab
         self.abnormal_score_func = abnormal_score_func
         self.abnormal_score_func_TS = abnormal_score_func
-        self.cls_loss = BCELoss()
+        self.pred_cls = pred_cls
+        if pred_cls:
+            self.cls_loss = BCELoss()
+            self.cls_anomalies = nn.Linear(embed_dim, 1)
         # --------------------------------------------------------------------------
 
         self.masking = getattr(self, masking_method)
@@ -58,7 +61,6 @@ class MaskedAutoencoderCvT(nn.Module):
                   height=self.mask_height, width=self.mask_width)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
-        self.cls_anomalies = nn.Linear(embed_dim, 1)
         # --------------------------------------------------------------------------
 
         # --------------------------------------------------------------------------
@@ -332,21 +334,22 @@ class MaskedAutoencoderCvT(nn.Module):
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio, grad_mask)
 
         if self.train_TS is False:
-
             pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
             loss = self.forward_loss(targets, grad_mask, pred, mask)
-            b, c, h, w = targets.shape
-            target_labels = self.patchify(targets[:, -1:, :, :], chans=1).mean(2)
-            num_patches = target_labels.shape[1]
-            target_labels = einops.rearrange(target_labels, 'b p->(b p)', p=num_patches)
-            flatten_mask = einops.rearrange(mask, 'b p->(b p)', p=num_patches)
-            target_labels = target_labels[flatten_mask == 0]
-            target_labels = einops.rearrange(target_labels, "(b p)-> b p", p=int(num_patches * (1 - mask_ratio)))
-            target_labels = (target_labels != -1) * 1
-            # cls_token = latent[:, -1]
-            pred_anomalies = torch.sigmoid(self.cls_anomalies(latent[:, 1:, :]).squeeze())
-            cls_loss = self.cls_loss(pred_anomalies, target_labels.float())
-            loss = loss + 0.5 * cls_loss
+            pred_anomalies = None
+            if self.pred_cls:
+                b, c, h, w = targets.shape
+                target_labels = self.patchify(targets[:, -1:, :, :], chans=1).mean(2)
+                num_patches = target_labels.shape[1]
+                target_labels = einops.rearrange(target_labels, 'b p->(b p)', p=num_patches)
+                flatten_mask = einops.rearrange(mask, 'b p->(b p)', p=num_patches)
+                target_labels = target_labels[flatten_mask == 0]
+                target_labels = einops.rearrange(target_labels, "(b p)-> b p", p=int(num_patches * (1 - mask_ratio)))
+                target_labels = (target_labels != -1) * 1
+                # cls_token = latent[:, -1]
+                pred_anomalies = torch.sigmoid(self.cls_anomalies(latent[:, 1:, :]).squeeze())
+                cls_loss = self.cls_loss(pred_anomalies, target_labels.float())
+                loss = loss + 0.5 * cls_loss
             if self.training:
                 return loss, pred, mask
             else:
@@ -354,18 +357,20 @@ class MaskedAutoencoderCvT(nn.Module):
         else:
             pred_stud, pred_teacher = self.forward_decoder_TS(latent, ids_restore)  # [N, L, p*p*3]
             loss = self.forward_loss_TS(pred_stud, pred_teacher, mask)
-            b, c, h, w = targets.shape
-            target_labels = self.patchify(targets[:, -1:, :], chans=1).mean(2)
-            num_patches = target_labels.shape[1]
-            target_labels = einops.rearrange(target_labels, 'b p->(b p)', p=num_patches)
-            flatten_mask = einops.rearrange(mask, 'b p->(b p)', p=num_patches)
-            target_labels = target_labels[flatten_mask == 0]
-            target_labels = einops.rearrange(target_labels, "(b p)-> b p", p=int(num_patches * (1 - mask_ratio)))
-            target_labels = (target_labels != -1) * 1
-            # cls_token = latent[:, -1]
-            pred_anomalies = torch.sigmoid(self.cls_anomalies(latent[:, 1:, :]).squeeze())
-            cls_loss = self.cls_loss(pred_anomalies, target_labels.float())
-            loss = loss + 0.5 * cls_loss
+            pred_anomalies = None
+            if self.pred_cls:
+                b, c, h, w = targets.shape
+                target_labels = self.patchify(targets[:, -1:, :], chans=1).mean(2)
+                num_patches = target_labels.shape[1]
+                target_labels = einops.rearrange(target_labels, 'b p->(b p)', p=num_patches)
+                flatten_mask = einops.rearrange(mask, 'b p->(b p)', p=num_patches)
+                target_labels = target_labels[flatten_mask == 0]
+                target_labels = einops.rearrange(target_labels, "(b p)-> b p", p=int(num_patches * (1 - mask_ratio)))
+                target_labels = (target_labels != -1) * 1
+                # cls_token = latent[:, -1]
+                pred_anomalies = torch.sigmoid(self.cls_anomalies(latent[:, 1:, :]).squeeze())
+                cls_loss = self.cls_loss(pred_anomalies, target_labels.float())
+                loss = loss + 0.5 * cls_loss
             if self.training:
                 return loss, pred_stud, mask
             else:
@@ -374,10 +379,10 @@ class MaskedAutoencoderCvT(nn.Module):
 
     def abnormal_score(self, imgs, pred, mask, gradients, pred_anomalies):
         imgs = self.patchify(imgs)
-        grad_weights = F.max_pool2d(gradients, self.patch_size).mean(1)
-        grad_weights = rearrange(grad_weights, 'b h w -> b (h w)')
-        grad_weights = grad_weights / grad_weights.sum(dim=1, keepdims=True)
         if self.use_only_masked_tokens_ab:
+            grad_weights = F.max_pool2d(gradients, self.patch_size).mean(1)
+            grad_weights = rearrange(grad_weights, 'b h w -> b (h w)')
+            grad_weights = grad_weights / grad_weights.sum(dim=1, keepdims=True)
             mask = mask.bool()
             selected_pred = []
             selected_lbl = []
@@ -387,39 +392,43 @@ class MaskedAutoencoderCvT(nn.Module):
 
             pred = torch.stack(selected_pred)
             imgs = torch.stack(selected_lbl)
-        return [((imgs - pred) ** 2).mean((1, 2)), pred_anomalies.mean(1)]  # MSE
+        if pred_anomalies is not None:
+            return [((imgs - pred) ** 2).mean((1, 2)), pred_anomalies.mean(1)]  # MSE
+        else:
+            return [((imgs - pred) ** 2).mean((1, 2))]  # MSE
 
     def abnormal_score_TS(self, imgs, pred_stud, pred_teacher, mask, gradients, pred_anomalies):
         imgs = self.patchify(imgs)
-        grad_weights = F.avg_pool2d(gradients, self.patch_size).mean(1)
-        grad_weights = rearrange(grad_weights, 'b h w -> b (h w)')
-        grad_weights = grad_weights / grad_weights.sum(dim=1, keepdims=True)
-        grad_weights *= 10
-        # if self.use_only_masked_tokens_ab:
-        mask = mask.bool()
-        selected_pred_stud = []
-        selected_pred_teacher = []
-        selected_lbl = []
-        selected_gradients = []
-        for i in range(0, imgs.shape[0]):
-            selected_pred_stud.append(pred_stud[i][mask[i]])
-            selected_pred_teacher.append(pred_teacher[i][mask[i]])
-            selected_lbl.append(imgs[i][mask[i]])
-            selected_gradients.append(grad_weights[i][mask[i]])
-        pred_stud_masked = torch.stack(selected_pred_stud)
-        pred_teacher_masked = torch.stack(selected_pred_teacher)
-        imgs_masked = torch.stack(selected_lbl)
-        grad_weights_masked = torch.stack(selected_gradients)
+        if self.use_only_masked_tokens_ab:
+            grad_weights = F.avg_pool2d(gradients, self.patch_size).mean(1)
+            grad_weights = rearrange(grad_weights, 'b h w -> b (h w)')
+            grad_weights = grad_weights / grad_weights.sum(dim=1, keepdims=True)
+            grad_weights *= 10
+            mask = mask.bool()
+            selected_pred_stud = []
+            selected_pred_teacher = []
+            selected_lbl = []
+            selected_gradients = []
+            for i in range(0, imgs.shape[0]):
+                selected_pred_stud.append(pred_stud[i][mask[i]])
+                selected_pred_teacher.append(pred_teacher[i][mask[i]])
+                selected_lbl.append(imgs[i][mask[i]])
+                selected_gradients.append(grad_weights[i][mask[i]])
+            pred_stud_masked = torch.stack(selected_pred_stud)
+            pred_teacher_masked = torch.stack(selected_pred_teacher)
+            imgs_masked = torch.stack(selected_lbl)
+            grad_weights_masked = torch.stack(selected_gradients)
         output = []
         if self.abnormal_score_func_TS == "L1":
             output.append(torch.abs(pred_teacher - pred_stud).mean((2)))  # MAE
             output.append(torch.abs(imgs - pred_teacher).mean((2)))
-            return [output[0].mean(1), output[1].mean(1)]
         elif self.abnormal_score_func_TS == "L2":
-
             output.append((((pred_teacher - pred_stud) ** 2).mean(2)))
             output.append((((imgs - pred_teacher) ** 2).mean(2)))
+        if pred_anomalies is not None:
             return [output[0].mean(1), output[1].mean(1), pred_anomalies.mean(1)]
+        else:
+            return [output[0].mean(1), output[1].mean(1)]
 
     def process_result(self, gradients, pred_stud, pred_teacher, do_erosion=True):
         gradients = gradients.mean(dim=1, keepdim=True)

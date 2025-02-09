@@ -60,7 +60,7 @@ def inference(model: torch.nn.Module, data_loader: Iterable,
         predictions_teacher = np.array(predictions_teacher)
         predictions_student_teacher = np.array(predictions_student_teacher)
         pred_anomalies = np.array(pred_anomalies)
-        predictions = pred_anomalies + predictions_teacher + predictions_student_teacher
+        predictions = predictions_teacher + predictions_student_teacher + pred_anomalies
         micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
                                               normalize_scores=True,
                                               range=120, mu=16)

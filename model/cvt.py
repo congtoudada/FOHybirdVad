@@ -126,8 +126,12 @@ class Block(nn.Module):
                 agent_num=49, height=height, width=width, **kwargs
             )
             # self.attn = HiLo(
-            #     dim=dim_in, num_heads=num_heads * 2, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop,
+            #     dim=dim_in, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop,
             #     window_size=2, alpha=0.5
+            # )
+            # self.attn = P2TAttention(
+            #     dim=dim_in, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=None,
+            #     attn_drop=attn_drop, proj_drop=drop, pool_ratios=(1, 3, 6)
             # )
 
         self.drop_path = DropPath(drop_path) \
@@ -791,22 +795,22 @@ class AgentAttention(nn.Module):
         self.scale = head_dim ** -0.5
         self.with_cls_token = with_cls_token
 
-        # self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.conv_proj_q = self._build_projection(
-            dim, dim, kernel_size, padding_q,
-            stride_q, 'linear' if method == 'avg' else method
-        )
-        self.conv_proj_k = self._build_projection(
-            dim, dim, kernel_size, padding_kv,
-            stride_kv, method
-        )
-        self.conv_proj_v = self._build_projection(
-            dim, dim, kernel_size, padding_kv,
-            stride_kv, method
-        )
-        self.proj_q = nn.Linear(dim, dim, bias=qkv_bias)
-        self.proj_k = nn.Linear(dim, dim, bias=qkv_bias)
-        self.proj_v = nn.Linear(dim, dim, bias=qkv_bias)
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        # self.conv_proj_q = self._build_projection(
+        #     dim, dim, kernel_size, padding_q,
+        #     stride_q, 'linear' if method == 'avg' else method
+        # )
+        # self.conv_proj_k = self._build_projection(
+        #     dim, dim, kernel_size, padding_kv,
+        #     stride_kv, method
+        # )
+        # self.conv_proj_v = self._build_projection(
+        #     dim, dim, kernel_size, padding_kv,
+        #     stride_kv, method
+        # )
+        # self.proj_q = nn.Linear(dim, dim, bias=qkv_bias)
+        # self.proj_k = nn.Linear(dim, dim, bias=qkv_bias)
+        # self.proj_v = nn.Linear(dim, dim, bias=qkv_bias)
 
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
@@ -920,15 +924,15 @@ class AgentAttention(nn.Module):
         num_heads = self.num_heads  # 注意力头的个数
         head_dim = c // num_heads  # 每个头的通道数
 
-        # # kv表将输入x通过线性层生成q示: (b,n,c) --qkv-> (b,n,3c) --reshape-> (b,n,3,c) --permute-> (3,b,n,c)
-        # qkv = self.qkv(x).reshape(b, n, 3, c).permute(2, 0, 1, 3)
-        # # 将qkv拆分: q:(b,n,c)  k:(b,n,c)  v:(b,n,c)
-        # q, k, v = qkv[0], qkv[1], qkv[2]
+        # kv表将输入x通过线性层生成q示: (b,n,c) --qkv-> (b,n,3c) --reshape-> (b,n,3,c) --permute-> (3,b,n,c)
+        qkv = self.qkv(x).reshape(b, n, 3, c).permute(2, 0, 1, 3)
+        # 将qkv拆分: q:(b,n,c)  k:(b,n,c)  v:(b,n,c)
+        q, k, v = qkv[0], qkv[1], qkv[2]
 
-        q, k, v = self.forward_conv(x, self.height, self.width)
-        q = rearrange(self.proj_q(q), 'b t (h d) -> b h t d', h=self.num_heads)
-        k = rearrange(self.proj_k(k), 'b t (h d) -> b h t d', h=self.num_heads)
-        v = rearrange(self.proj_v(v), 'b t (h d) -> b h t d', h=self.num_heads)
+        # q, k, v = self.forward_conv(x, self.height, self.width)
+        # q = rearrange(self.proj_q(q), 'b t (h d) -> b h t d', h=self.num_heads)
+        # k = rearrange(self.proj_k(k), 'b t (h d) -> b h t d', h=self.num_heads)
+        # v = rearrange(self.proj_v(v), 'b t (h d) -> b h t d', h=self.num_heads)
 
         q_t = q.reshape(b, self.height, self.width, c).permute(0, 3, 1, 2)
         agent_tokens = self.pool(q_t).reshape(b, c, -1).permute(0, 2, 1)
@@ -970,6 +974,82 @@ class AgentAttention(nn.Module):
         return x
 
 
+class P2TAttention(nn.Module):
+    def __init__(self, dim, num_heads=2, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.,
+                 pool_ratios=(1, 2, 3, 6), with_cls_token=True):
+        super().__init__()
+        assert dim % num_heads == 0, f"dim {dim} should be divided by num_heads {num_heads}."
+
+        self.dim = dim
+        self.num_heads = num_heads
+        self.num_elements = np.array([t * t for t in pool_ratios]).sum()
+        head_dim = dim // num_heads
+        self.scale = qk_scale or head_dim ** -0.5
+        self.with_cls_token = with_cls_token
+
+        self.q = nn.Sequential(nn.Linear(dim, dim, bias=qkv_bias))
+        self.kv = nn.Sequential(nn.Linear(dim, dim * 2, bias=qkv_bias))
+
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        self.pool_ratios = pool_ratios  # 池化窗口大小
+        self.pools = nn.ModuleList()
+
+        self.norm = nn.LayerNorm(dim)
+        self.d_convs1 = nn.ModuleList(
+            [nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1, groups=dim) for temp in self.pool_ratios])
+
+    def forward(self, x, H=20, W=40, d_convs=None):
+        if self.with_cls_token:
+            cls_token, x = torch.split(x, [1, H * W], 1)
+
+        B, N, C = x.shape
+
+        # 通过输入x生成q矩阵: (B,N,C) --q-> (B,N,C) --reshape-> (B,N,h,d) --permute-> (B,h,N,d);   C=h*d
+        q = self.q(x).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+
+        pools = []
+
+        # 为了便于在x上执行多尺度池化操作,我们将其reshape重塑为2D类型: (B,N,C) --permute-> (B,C,N) --reshape-> (B,C,H,W)
+        x_ = x.permute(0, 2, 1).reshape(B, C, H, W)
+        # 遍历多个池化层, 假设池化窗口为: [1 ,2 ,3 ,6]
+        for (pool_ratio, l) in zip(self.pool_ratios, self.d_convs1):
+            # 分别计算当前池化窗口下的输出: input:(B,C,H,W);  1th_pool: (B,C,H/1,W/1); 2th_pool: (B,C,H/2,W/2); 3th_pool: (B,C,H/3,W/3); 4th_pool: (B,C,H/6,W/6)
+            pool = F.adaptive_avg_pool2d(x_, (round(H / pool_ratio), round(W / pool_ratio)))
+            # 将每一个尺度对应的池化层的输出, 再通过3*3的深度卷积进行相对位置编码, 然后与池化的输出相加
+            pool = pool + l(pool)
+            # 将每个尺度的输出重塑为与原始输入相同的shape: 1th_pool: (B,C,H/1,W/1) -->(B,C,(HW/1^2));  2th_pool: (B,C,H/2,W/2) --> (B,C,(HW/2^2));  3th_pool: (B,C,H/3,W/3) --> (B,C,(HW/3^2));   3th_pool: (B,C,H/6,W/6) --> (B,C,(HW/6^2));
+            pools.append(pool.view(B, C, -1))
+
+        # 将多个尺度池化层的输出在token维度进行拼接,其具有多尺度的上下文信息: (B,C,(HW/1^2)+(HW/2^2)+(HW/3^2)+(HW/6^2))==(B,C,token_num) , 令token_num = (HW/1^2)+(HW/2^2)+(HW/3^2)+(HW/6^2)
+        pools = torch.cat(pools, dim=2)
+        # 将其进行维度转换, 以便于后续计算: (B,C,token_num)--permute->(B,token_num,C)
+        pools = self.norm(pools.permute(0, 2, 1))
+
+        # 多尺度的上下文信息生成kv: (B,token_num,C) --kv-> (B,token_num,2C) --reshape-> (B,token_num,2,h,d) --permute-> (2,B,h,token_num,d);   C=h*d
+        kv = self.kv(pools).reshape(B, -1, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        # k:(B,h,token_num,d); v:(B,h,token_num,d)
+        k, v = kv[0], kv[1]
+
+        # 计算Token-to-Region化的注意力矩阵(region是指池化是在窗口上进行的,窗口可以看作region): (B,h,N,d) @ (B,h,d,token_num) = (B,h,N,token_num)  N:输入的token总数, token_num:池化后的Token总数量
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = attn.softmax(dim=-1)
+
+        # 通过注意力矩阵对value加权求和: (B,h,N,token_num) @ (B,h,token_num,d) = (B,h,N,d)
+        x = (attn @ v)
+
+        # 通过对输入进行重塑shape得到与原始输入相同的shape: (B,h,N,d) --transpose-> (B,N,h,d) --reshape-> (B,N,C)
+        x = x.transpose(1, 2).contiguous().reshape(B, N, C)
+        # 最后通过一个线性层进行映射, 得到最终输出: (B,N,C)-->(B,N,C)
+        x = self.proj(x)
+
+        if self.with_cls_token:
+            x = torch.cat((cls_token, x), dim=1)
+        return x
+
+
 if __name__ == '__main__':
     device = "cuda"
     X = torch.randn(1, 800, 256).to(device)
@@ -991,20 +1071,20 @@ if __name__ == '__main__':
     # print(f"Attention执行时间: {end_time - start_time} 秒")
     # print(out.shape)
     # summary(Baseline, (N, D))
-
-    print("*********************************************")
-    Model1 = AgentAttention(dim=D, num_heads=num_heads, qkv_bias=False, attn_drop=0., proj_drop=0.,
-                            agent_num=49, height=H, width=W, with_cls_token=False)
-    Model1.to(device)
-    out = Model1(X)
-    X = torch.randn(1, N, D).to(device)
-    start_time = time.time()
-    for i in range(run_cnt):
-        out = Model1(X)
-    end_time = time.time()
-    print(f"AgentAttention执行时间: {end_time - start_time} 秒")
-    print(out.shape)
-    summary(Model1, (N, D))
+    #
+    # print("*********************************************")
+    # Model1 = AgentAttention(dim=D, num_heads=num_heads, qkv_bias=False, attn_drop=0., proj_drop=0.,
+    #                         agent_num=49, height=H, width=W, with_cls_token=False)
+    # Model1.to(device)
+    # out = Model1(X)
+    # X = torch.randn(1, N, D).to(device)
+    # start_time = time.time()
+    # for i in range(run_cnt):
+    #     out = Model1(X)
+    # end_time = time.time()
+    # print(f"AgentAttention执行时间: {end_time - start_time} 秒")
+    # print(out.shape)
+    # summary(Model1, (N, D))
 
     # print("**************************************************")
     # Model2 = HiLo(dim=D, num_heads=num_heads, window_size=2, alpha=0.5, with_cls_token=False)
@@ -1032,3 +1112,19 @@ if __name__ == '__main__':
     # print(f"EfficientAdditiveAttention执行时间: {end_time - start_time} 秒")
     # print(out.shape)
     # summary(Model3, (N, D))
+
+    print("*********************************************")
+    Model4 = P2TAttention(
+        dim=256, num_heads=8, qkv_bias=True, qk_scale=None,
+        attn_drop=0., proj_drop=0., pool_ratios=(1, 3, 6)).to("cuda")
+    Model4.to(device)
+    X = X.reshape(B, N, D)
+    out = Model4(X)
+    X = torch.randn(1, N, D).to(device)
+    start_time = time.time()
+    for i in range(run_cnt):
+        out = Model4(X)
+    end_time = time.time()
+    print(f"P2TAttention执行时间: {end_time - start_time} 秒")
+    print(out.shape)
+    summary(Model4, (N, D))
