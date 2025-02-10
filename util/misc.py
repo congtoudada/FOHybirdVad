@@ -342,6 +342,10 @@ def load_model(args, model, optimizer=None, loss_scaler=None, train_TS=False):
                 if 'scaler' in checkpoint:
                     loss_scaler.load_state_dict(checkpoint['scaler'])
                 print("With optim & sched!")
+    else:
+        if os.path.exists(os.path.join(args.output_dir, "checkpoint-best.pth")):
+            checkpoint = torch.load(os.path.join(args.output_dir, "checkpoint-best.pth"), map_location='cpu')
+            model.load_state_dict(checkpoint['model'])
     if args.finetune:
         teacher = torch.load(args.output_dir + "/checkpoint-best.pth")['model']
         if os.path.exists(args.output_dir + "/checkpoint-best.pth"):
