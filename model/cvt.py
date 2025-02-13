@@ -916,7 +916,7 @@ class AgentAttention(nn.Module):
             :param x: input features with shape of (num_windows*B, N, C)
         """
         if self.with_cls_token:
-            cls_token, x = torch.split(x, [1, self.height * self.width], 1)
+            cls_token, x = torch.split(x, [1, h * w], 1)
 
         b, n, c = x.shape
         # h = int(n ** 0.5)  # 每列有h个token

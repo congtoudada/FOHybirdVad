@@ -52,7 +52,7 @@ def main(args):
                                 masking_method=args.masking_method,
                                 mask_ratio=args.mask_ratio,
                                 grad_weighted_loss=args.grad_weighted_rec_loss,
-                                pred_cls=args.pred_cls).float()
+                                pred_cls=args.pred_cls, finetune=args.finetune).float()
     else:
         model = mae_cvt_patch8(norm_pix_loss=args.norm_pix_loss, img_size=args.input_size,
                                use_only_masked_tokens_ab=args.use_only_masked_tokens_ab,
@@ -60,7 +60,7 @@ def main(args):
                                masking_method=args.masking_method,
                                mask_ratio=args.mask_ratio,
                                grad_weighted_loss=args.grad_weighted_rec_loss,
-                               pred_cls=args.pred_cls).float()
+                               pred_cls=args.pred_cls, finetune=args.finetune).float()
     model.to(device)
     if args.run_type == "train":
         do_training(args, data_loader_test, data_loader_train, device, log_writer, model)
@@ -132,7 +132,7 @@ def do_training(args, data_loader_test, data_loader_train, device, log_writer, m
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='avenue')
+    parser.add_argument('--dataset', type=str, default='shanghai')
     args = parser.parse_args()
     if args.dataset == 'avenue':
         args = get_configs_avenue()

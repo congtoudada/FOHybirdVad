@@ -45,21 +45,21 @@ def get_configs_avenue():
 def get_configs_shanghai():
     config = ml_collections.ConfigDict()
     config.batch_size = 100
-    config.epochs = 30
+    config.epochs = 50
     config.mask_ratio = 0.5
-    config.start_TS_epoch = 20
+    config.start_TS_epoch = 30
     config.masking_method = "random_masking"
     config.output_dir = "experiments/shanghai"  # the checkpoints will be loaded from here
-    config.abnormal_score_func = 'L1'
+    config.abnormal_score_func = 'L2'
     config.grad_weighted_rec_loss = True
     config.model = "mae_cvt"
-    config.input_size = (320, 640)
+    config.input_size = (240, 480)
     config.norm_pix_loss = False
     config.use_only_masked_tokens_ab = False
     config.run_type = "inference"
     config.resume = False
     config.finetune = False
-    config.pred_cls = False
+    config.pred_cls = True
 
     # Optimizer parameters
     config.weight_decay = 0.05
