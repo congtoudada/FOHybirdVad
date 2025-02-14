@@ -63,24 +63,24 @@ def inference(model: torch.nn.Module, data_loader: Iterable,
         pred_anomalies = np.array(pred_anomalies)
         predictions = 1.05 * predictions_teacher + 0.53 * predictions_student_teacher + 0.53 * pred_anomalies
 
-        # micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
-        #                                       normalize_scores=True,
-        #                                       range=120, mu=16)
-        # micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
-        #                                       normalize_scores=False,
-        #                                       range=120, mu=16)
-        # micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
-        #                                       normalize_scores=True,
-        #                                       range=50, mu=20)
-        # micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
-        #                                       normalize_scores=False,
-        #                                       range=50, mu=20)
-        # micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
-        #                                       normalize_scores=False,
-        #                                       range=200, mu=20)
+        micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
+                                              normalize_scores=True,
+                                              range=120, mu=16)
         micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
                                               normalize_scores=False,
-                                              range=120, mu=16, draw_vis=True)
+                                              range=120, mu=16)
+        micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
+                                              normalize_scores=True,
+                                              range=50, mu=20)
+        micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
+                                              normalize_scores=False,
+                                              range=50, mu=20)
+        micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
+                                              normalize_scores=False,
+                                              range=200, mu=20)
+        micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
+                                              normalize_scores=True,
+                                              range=200, mu=20, draw_vis=True)
 
     # np.save("st_tc_list.npy", predictions_student_teacher)
     # np.save("rec_list.npy", predictions_teacher)
